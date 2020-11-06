@@ -75,7 +75,7 @@ public class TrackContainer extends HorizontalScrollView {
                 break;
 
             case MotionEvent.ACTION_MOVE:
-                if(isDoublePointer)return true;
+//                if(isDoublePointer)return true;
 
 
         }

@@ -51,6 +51,7 @@ public class TrackView extends View {
     long defaultUsPerUnit = 1000 * 1000;//默认一个单元多少us
     long unitUs = defaultUsPerUnit;//一个单元多少us
     float pxPerUs;
+    float tempFactor=1f;
 
     private List<List<TrackMediaBean>> medias = new ArrayList<>();
     private DateFormat df = new SimpleDateFormat("mm:ss");
@@ -109,12 +110,21 @@ public class TrackView extends View {
         setMeasuredDimension(width, height);
 
 
+
     }
+
 
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        HorizontalScrollView parent= (HorizontalScrollView) getParent();
+        Log.d(TAG, "setScale: "+parent.getScrollX());
+        if(tempFactor!=1f) {
+            int scroll = (int) (parent.getScrollX() * (tempFactor - 1));
+            tempFactor = 1f;
+            parent.setScrollX(parent.getScrollX() + scroll);
+        }
         drawTimeRuler(canvas);
     }
 
@@ -174,16 +184,11 @@ public class TrackView extends View {
         this.scaleFactor = scaleFactor;
         pxPerUs*=scaleFactor;
         if (scaleFactor != lastScaleFactor) {
-            float factor = scaleFactor / lastScaleFactor;
-            unitSize *= factor;
-            HorizontalScrollView parent= (HorizontalScrollView) getParent();
-            Log.d(TAG, "setScale: "+parent.getScrollX());
-            if (medias.size() > 0) {
-                int scroll= (int) (parent.getScrollX()*(factor-1));
-                parent.setScrollX(parent.getScrollX()+scroll);
-            }
+            tempFactor = scaleFactor / lastScaleFactor;
+            unitSize *= tempFactor;
             measureUnitSize();
             requestLayout();
+
         }
 
     }
