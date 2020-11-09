@@ -1,5 +1,8 @@
 package com.leory.vdieoeditdemo.bean;
 
+import android.view.View;
+import android.widget.TextView;
+
 /**
  * @Description: 轨道bean
  * @Author: leory
@@ -11,6 +14,7 @@ public class TrackMediaBean {
     private String name;//media name
     private long duration;//media时长
     private long atTrackTime;//在轨道的位置
+    private View view;//显示的视图
 
     public int getId() {
         return id;
@@ -50,5 +54,13 @@ public class TrackMediaBean {
 
     public void setAtTrackTime(long atTrackTime) {
         this.atTrackTime = atTrackTime;
+    }
+
+    public View getView() {
+        return view;
+    }
+
+    public void setView(View view) {
+        this.view = view;
     }
 }

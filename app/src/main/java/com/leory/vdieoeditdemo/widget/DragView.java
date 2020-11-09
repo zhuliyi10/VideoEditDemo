@@ -19,7 +19,12 @@ import com.leory.vdieoeditdemo.utils.ScreenUtils;
  */
 public class DragView extends View {
     private int lastX, lastY,parentWidth,parentHeight;
-
+    //长按的runnable
+    private Runnable mLongPressRunnable;
+    //移动的阈值
+    private static final int TOUCH_SLOP = 20;
+    private boolean isLongPress=false;
+    private boolean isMoved;
     public DragView(Context context) {
         super(context);
         init();
@@ -40,7 +45,13 @@ public class DragView extends View {
         Point outSize = new Point();
         ((Activity)getContext()).getWindowManager().getDefaultDisplay().getRealSize(outSize);
         parentWidth = outSize.x;
-        parentHeight = ScreenUtils.dp2px(getContext(),250);
+        parentHeight = outSize.y;
+        mLongPressRunnable=new Runnable() {
+            @Override
+            public void run() {
+                isLongPress=true;
+            }
+        };
     }
 
     @Override
@@ -51,34 +62,47 @@ public class DragView extends View {
             case MotionEvent.ACTION_DOWN:
                 lastX = x;
                 lastY = y;
+                isMoved=false;
+                postDelayed(mLongPressRunnable, 200);
                 break;
             case MotionEvent.ACTION_MOVE:
-                int offsetX = x - lastX;
-                int offsetY = y - lastY;
-                int l=getLeft()+offsetX;
-                int r=getRight()+offsetX;
-                int t=getTop()+offsetY;
-                int b=getBottom()+offsetY;
-                if(l<0){
-                    l=0;
-                    r=getWidth();
+                if (!isMoved && (Math.abs(lastX - x) > TOUCH_SLOP || Math.abs(lastY - y) > TOUCH_SLOP)) {
+                    isMoved = true;
+                    removeCallbacks(mLongPressRunnable);
                 }
-                if(t<0){
-                    t=0;
-                    b=t+getHeight();
+                if(isLongPress) {
+                    int offsetX = x - lastX;
+                    int offsetY = y - lastY;
+                    int l = getLeft() + offsetX;
+                    int r = getRight() + offsetX;
+                    int t = getTop() + offsetY;
+                    int b = getBottom() + offsetY;
+                    if (l < 0) {
+                        l = 0;
+                        r = getWidth();
+                    }
+                    if (t < 0) {
+                        t = 0;
+                        b = t + getHeight();
+                    }
+                    if (r > parentWidth) {
+                        r = parentWidth;
+                        l = r - getWidth();
+                    }
+                    if (b > parentHeight) {
+                        b = parentHeight;
+                        t = b - getHeight();
+                    }
+                    layout(l, t, r, b);
+                    lastX = x;
+                    lastY = y;
                 }
-                if(r>parentWidth){
-                    r=parentWidth;
-                    l=r-getWidth();
-                }
-                if(b>parentHeight){
-                    b=parentHeight;
-                    t=b-getHeight();
-                }
-                layout(l,t,r,b);
-                lastX=x;
-                lastY=y;
                 break;
+
+                case MotionEvent.ACTION_UP:
+                    isLongPress=false;
+                    removeCallbacks(mLongPressRunnable);
+                    break;
 
         }
         return true;
