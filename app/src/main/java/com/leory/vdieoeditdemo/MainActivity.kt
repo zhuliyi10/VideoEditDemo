@@ -17,6 +17,9 @@ class MainActivity : AppCompatActivity() {
             track.addTrack((40*1000*1000*Math.random()).toLong())
         }
 
+        img_back.setOnClickListener {
+            track.backOperate()
+        }
     }
 
 }

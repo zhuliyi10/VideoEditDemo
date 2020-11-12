@@ -11,8 +11,6 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.widget.HorizontalScrollView;
 
-import androidx.core.view.GestureDetectorCompat;
-
 import com.leory.vdieoeditdemo.bean.TrackMediaBean;
 import com.leory.vdieoeditdemo.utils.ScreenUtils;
 
@@ -28,10 +26,9 @@ public class TrackContainer extends HorizontalScrollView {
     private Paint baseLinePaint;
     private float scaleFactor = 1f, lastScaleFactor = 1f;
     private ScaleGestureDetector scaleGestureDetector;//缩放监听器
-    private GestureDetectorCompat gestureDetector;
-    private TrackView trackView;
+    private TimeRuleContainer timeRuleContainer;
     private boolean isDoublePointer = false;
-    private long lastScaleTime=0L;//上一次缩放的时间
+    private long lastScaleTime = 0L;//上一次缩放的时间
 
     public TrackContainer(Context context) {
         super(context);
@@ -59,37 +56,45 @@ public class TrackContainer extends HorizontalScrollView {
         baseLinePaint.setAntiAlias(true);
         baseLinePaint.setColor(Color.WHITE);
         scaleGestureDetector = new ScaleGestureDetector(context, scaleGestureListener);
-        trackView = new TrackView(context);
-        addView(trackView);
+        timeRuleContainer = new TimeRuleContainer(context);
+        addView(timeRuleContainer);
+    }
+
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+        switch (ev.getAction() & MotionEvent.ACTION_MASK) {
+            case MotionEvent.ACTION_POINTER_DOWN:
+                isDoublePointer = true;
+                Log.d(TAG, "onInterceptTouchEvent: ACTION_POINTER_DOWN ");
+                return true;
+
+        }
+        return super.onInterceptTouchEvent(ev);
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
-
+        boolean scale = scaleGestureDetector.onTouchEvent(ev);
         switch (ev.getAction() & MotionEvent.ACTION_MASK) {
-            case MotionEvent.ACTION_DOWN:
-                Log.d(TAG, "onTouchEvent: ACTION_DOWN");
-                break;
-            case MotionEvent.ACTION_UP:
-                Log.d(TAG, "onTouchEvent: ACTION_UP");
-                break;
             case MotionEvent.ACTION_POINTER_DOWN:
                 isDoublePointer = true;
-                getParent().requestDisallowInterceptTouchEvent(true);
-                Log.d(TAG, "onTouchEvent: ACTION_POINTER_DOWN");
+                Log.d(TAG, "onTouchEvent: ACTION_POINTER_DOWN ");
                 break;
             case MotionEvent.ACTION_POINTER_UP:
                 isDoublePointer = false;
-                Log.d(TAG, "onTouchEvent: ACTION_POINTER_UP");
-                lastScaleTime=System.currentTimeMillis();
+                Log.d(TAG, "onTouchEvent: ACTION_POINTER_UP " );
+                lastScaleTime = System.currentTimeMillis();
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (isDoublePointer&&scale) return true;
+                long diff = System.currentTimeMillis() - lastScaleTime;
+                Log.d(TAG, "diff: " + diff);
+                if (diff < 100) return true;//缩放后200ms不做滚动
                 break;
 
-            case MotionEvent.ACTION_MOVE:
-                if(isDoublePointer&scaleGestureDetector.onTouchEvent(ev))return true;
-                if(System.currentTimeMillis()-lastScaleTime<200)return true;//缩放后200ms不做滚动
-
         }
-        scaleGestureDetector.onTouchEvent(ev);
+
         return super.onTouchEvent(ev);
     }
 
@@ -117,19 +122,40 @@ public class TrackContainer extends HorizontalScrollView {
 //        Log.d(TAG, "getMeasuredWidth: " + getMeasuredWidth());
     }
 
+    /**
+     * 添加轨道数据
+     * @param time
+     */
     public void addTrack(long time) {
         TrackMediaBean bean = new TrackMediaBean();
         bean.setDuration(time);
-        trackView.addTrack(bean);
+        timeRuleContainer.addTrack(bean);
     }
 
     /**
-     * 获取当前的进度
-     *
+     * 返回上次操作
+     */
+    public void backOperate(){
+        if(getTrackView()!=null){
+            getTrackView().backOperate();
+        }
+    }
+
+    /**
+     * 获取时间刻度容器
      * @return
      */
-    public float getProgress() {
-        return getScaleX() / (trackView.getMeasuredWidth() - getMeasuredWidth());
+    public TimeRuleContainer getRuleContainer(){
+        return timeRuleContainer;
+    }
+
+    /**
+     * 获取轨道trackView
+     * @return
+     */
+    public TrackView getTrackView(){
+        if(timeRuleContainer!=null)return timeRuleContainer.getTrackView();
+        return null;
     }
 
     private float dp2px(float dp) {
@@ -139,7 +165,7 @@ public class TrackContainer extends HorizontalScrollView {
     private ScaleGestureDetector.OnScaleGestureListener scaleGestureListener = new ScaleGestureDetector.OnScaleGestureListener() {
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
-            scaleFactor =  detector.getScaleFactor() * lastScaleFactor;
+            scaleFactor = (float) (Math.pow(detector.getScaleFactor(),2) * lastScaleFactor);
             log("onScale:" + scaleFactor);
             log("getScaleFactor:" + detector.getScaleFactor());
             if (scaleFactor > 12f) {
@@ -148,7 +174,7 @@ public class TrackContainer extends HorizontalScrollView {
             if (scaleFactor < 1 / 20f) {
                 scaleFactor = 1 / 20f;
             }
-            trackView.setScale(scaleFactor);
+            timeRuleContainer.setScale(scaleFactor);
             return false;
         }
 

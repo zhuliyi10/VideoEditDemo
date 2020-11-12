@@ -1,67 +1,44 @@
 package com.leory.vdieoeditdemo.widget;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Rect;
-import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.TextView;
+import android.view.animation.LinearInterpolator;
+
+import androidx.annotation.NonNull;
+import androidx.customview.widget.ViewDragHelper;
 
 import com.leory.vdieoeditdemo.bean.TrackMediaBean;
 import com.leory.vdieoeditdemo.utils.ScreenUtils;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
+import java.util.Stack;
 
 /**
- * @Description: 轨道视频
+ * @Description: 处理轨道视频的管理和拖动
  * @Author: leory
  * @Time: 2020/11/4
  */
 public class TrackView extends ViewGroup {
     private static final String TAG = TrackView.class.getSimpleName();
-    private float scaleFactor = 1f;//缩放倍数
-    private float lastScaleFactor = 1f;//上一次倍数
-
-    //时间刻度尺相关
-    float timeLineHeight;//时间刻度尺高度
-    Rect timeBounds = new Rect();
-    ;//mm:ss字体大小
-    Paint timePaint = new Paint(Paint.ANTI_ALIAS_FLAG);//时间画笔
-    float dotSize = 0f;
-    float unitSize;//一个单元的宽度，定义为:.中心到mm:ss中心距离
-    float maxUnitSize;//一个单元最大宽度
-    float minUnitSize;// 一个单元最小宽度
-    float unitOneTwelfthSixSecond;//1/12秒为单位的最大宽度
-    float unitOneSixSecond;//1/6秒为单位的最大宽度
-    float unitQuartSecond;//1/4秒为单位的最大宽度
-    float unitHalfSecond;//1/2秒为单位的最大宽度
-    float unitSecond;//1秒为单位的最大宽度
-    float unitOneAndHalfSecond;//1.5秒为单位的最大宽度
-    float unitTwoAndHalfSecond;//2.5秒为单位的最大宽度
-    float unitFiveSecond;//5秒为单位的最大宽度
-    float unitTenSecond;//10秒为单位的最大宽度
-    float unitTwentySecond;//20秒为单位的最大宽度
-    long defaultUsPerUnit = 1000 * 1000;//默认一个单元多少us
-    long unitUs = defaultUsPerUnit;//一个单元多少us
-    float pxPerUs;
-    float tempFactor = 1f;
-    private long duration = 0L;//视频总时长
-    private int trackNum=0;//轨道个数
-
-
+    private int trackId = 0;//轨道个数
     int itemTrackHeight;//一个轨道的高度
     int itemTrackViewHeight;//一个轨道view的高度
+    private ViewDragHelper dragHelper;
+    private int captureLeft;
+    private int captureTop;
+    ValueAnimator LeftEdgeAnim;//左边缘动画
+    ValueAnimator rightEdgeAnim;//右边缘动画
+    private int edgeTriggerSize;//边缘触发距离
+    private float animSpeed;//动画速度 1ms多少个dp
     private List<List<TrackMediaBean>> trackMedias = new ArrayList<>();
-    private DateFormat df = new SimpleDateFormat("mm:ss");
+    private boolean isNeedRequestLayout = false;//是否需要重新requestLayout();
+    private Stack<List<List<TrackMediaBean>>> recordMedias = new Stack<>();
 
     public TrackView(Context context) {
         super(context);
@@ -79,70 +56,213 @@ public class TrackView extends ViewGroup {
     }
 
     private void init(Context context) {
-        setBackgroundColor(Color.BLACK);
-        timeLineHeight = dp2px(20);
-        timePaint.setStrokeWidth(3f);
-        timePaint.setColor(Color.GRAY);
-        timePaint.setTextSize(sp2px(10f));
-
-        dotSize = dp2px(2f);
-        maxUnitSize = ScreenUtils.getScreenWidth(context) / 8f;//初始状态一秒代表一个单元格,占屏幕1/8
-        unitOneTwelfthSixSecond = maxUnitSize;
-        unitOneSixSecond = maxUnitSize;
-        unitQuartSecond = maxUnitSize * 3 / 4;
-        unitHalfSecond = maxUnitSize;
-        unitSecond = maxUnitSize;
-        minUnitSize = maxUnitSize / 2;
-        unitOneAndHalfSecond = maxUnitSize * 3 / 4;
-        unitTwoAndHalfSecond = maxUnitSize * 5 / 6;
-        unitFiveSecond = maxUnitSize;
-        unitTenSecond = maxUnitSize;
-        unitTwentySecond = maxUnitSize;
-        unitSize = unitSecond;
-        pxPerUs = unitSize / defaultUsPerUnit;
-
-
+        setClipToPadding(false);
+        setClipChildren(false);
         itemTrackHeight = dp2px(50);
         itemTrackViewHeight = dp2px(40);
+        edgeTriggerSize = dp2px(15);
+        animSpeed = 1;
+        post(() -> initTrackMedias());
+
+        dragHelper = ViewDragHelper.create(this, 1f, new ViewDragHelper.Callback() {
+            @Override
+            public boolean tryCaptureView(@NonNull View child, int pointerId) {
+                return false;
+            }
+
+            @Override
+            public int clampViewPositionVertical(View child, int top, int dy) {
+                Log.d(TAG, "clampViewPositionVertical: " + child);
+                int bottom = getMeasuredHeight() - child.getMeasuredHeight();
+                if (top < 0) top = 0;
+                if (top > bottom) top = bottom;
+                return top;
+            }
+
+            @Override
+            public int clampViewPositionHorizontal(View child, int left, int dx) {
+                int right = getMeasuredWidth() - child.getMeasuredWidth();
+                if (left < 0) return 0;
+                int myLeft = child.getLeft() + dx;
+
+                Log.d(TAG, "clampViewPositionHorizontal:left=" + left + "  myLeft=" + myLeft);
+                return left;
+            }
+
+            @Override
+            public void onViewDragStateChanged(int state) {
+                super.onViewDragStateChanged(state);
+                Log.d(TAG, "onViewDragStateChanged: " + state);
+            }
+
+            @Override
+            public void onViewCaptured(@NonNull View capturedChild, int activePointerId) {
+                Log.d(TAG, "onViewCaptured: " + capturedChild);
+                capturedChild.bringToFront();
+                super.onViewCaptured(capturedChild, activePointerId);
+                captureLeft = capturedChild.getLeft();
+                captureTop = capturedChild.getTop();
+                getTrackContainer().requestDisallowInterceptTouchEvent(true);
+            }
+
+            @Override
+            public void onViewPositionChanged(@NonNull View changedView, int left, int top, int dx, int dy) {
+                super.onViewPositionChanged(changedView, left, top, dx, dy);
+            }
+
+            @Override
+            public void onViewReleased(@NonNull View releasedChild, float xvel, float yvel) {
+
+                boolean isCanMove = isCanMove((TrackItemView) releasedChild);
+                if (isCanMove) {//移动新的位置
+                    moveToNewPosition((TrackItemView) releasedChild);
+                } else {//不能移动，返回之前的位置
+                    dragHelper.settleCapturedViewAt(captureLeft, captureTop);
+
+                    trackMedias = copyTrackMedia(recordMedias.peek());//返回之前的操作
+//                    isNeedRequestLayout = true;
+//                    invalidate();
+                    notifyDataChanged();
+
+                }
+                getTrackContainer().requestDisallowInterceptTouchEvent(false);
+                TrackItemView itemView = (TrackItemView) releasedChild;
+                itemView.setLongPressState(false);
+            }
+
+            @Override
+            public int getViewHorizontalDragRange(@NonNull View child) {
+                return getMeasuredWidth() - child.getMeasuredWidth();
+            }
+
+            @Override
+            public int getViewVerticalDragRange(@NonNull View child) {
+                return getMeasuredHeight() - child.getMeasuredHeight();
+            }
+        });
     }
 
+    /**
+     * 获取所在的行数
+     *
+     * @param child
+     * @return
+     */
+    private int getRow(View child) {
+        int top = child.getTop();
+        return (top + itemTrackViewHeight / 2) / itemTrackHeight;
+    }
+
+    /**
+     * 能否移到新的位置
+     *
+     * @return
+     */
+    private boolean isCanMove(TrackItemView child) {
+        int left = child.getLeft();
+        int row = getRow(child);
+        if (row >= trackMedias.size()) return false;
+        long leftTime = getDuration() * left / getMeasuredWidth();
+        long rightTime = leftTime + child.getBean().getDuration();
+        List<TrackMediaBean> data = trackMedias.get(row);
+        for (TrackMediaBean bean : data) {
+            if (child.getBean() == bean) continue;
+            long start = bean.getAtTrackTime();
+            long end = start + bean.getDuration();
+            if(!(leftTime>end||rightTime<start)){//有交界
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 移动新的位置
+     */
+    private void moveToNewPosition(TrackItemView child) {
+        int left = child.getLeft();
+        int row = getRow(child);
+        TrackMediaBean mediaBean = null;
+        for (List<TrackMediaBean> data : trackMedias) {//先移除
+            for (TrackMediaBean bean : data) {
+                if (child.getBean() == bean) {
+                    mediaBean = bean;
+                    data.remove(bean);
+                    break;
+                }
+            }
+        }
+        if (mediaBean != null) {//按时间顺序插入到所在的行
+            long startTime = getDuration() * left / getMeasuredWidth();
+            mediaBean.setAtTrackTime(startTime);
+            List<TrackMediaBean> data = trackMedias.get(row);
+            int i = 0;
+            while (i < data.size()) {
+                TrackMediaBean bean = data.get(i);
+                if (bean.getAtTrackTime() < mediaBean.getAtTrackTime()) {
+                    i++;
+                } else {
+                    break;
+                }
+            }
+            data.add(i, mediaBean);
+            recordToStack();
+            computeTotalDuration();
+            requestLayout();
+        }
+
+
+    }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         int width = MeasureSpec.getSize(widthMeasureSpec);
-        int totalHeight = (int) timeLineHeight;
+        int height = MeasureSpec.getSize(heightMeasureSpec);
+
         if (trackMedias.size() > 0) {
-            width = (int) (duration * 1f / defaultUsPerUnit * maxUnitSize * scaleFactor);
             for (int i = 0; i < trackMedias.size(); i++) {
-                totalHeight += itemTrackHeight;
                 List<TrackMediaBean> data = trackMedias.get(i);
                 for (int j = 0; j < data.size(); j++) {
                     TrackMediaBean mediaBean = data.get(j);
-                    View child = mediaBean.getView();
-                    int specSize = (int) (width * mediaBean.getDuration() / duration);
+                    View child = findTrackItemView(mediaBean);
+                    int specSize = (int) (width * mediaBean.getDuration() / getDuration());
                     int childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(specSize, MeasureSpec.EXACTLY);
                     int childHeightMeasureSpec = MeasureSpec.makeMeasureSpec(itemTrackViewHeight, MeasureSpec.EXACTLY);
                     child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
+
                 }
 
 
             }
         }
-        setMeasuredDimension(width, totalHeight);
-
-
+        setMeasuredDimension(width, height);
     }
+
+
+    /**
+     * 找到包含mediaBean的数据
+     *
+     * @param mediaBean
+     * @return
+     */
+    private TrackItemView findTrackItemView(TrackMediaBean mediaBean) {
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            TrackItemView child = (TrackItemView) getChildAt(i);
+            if (mediaBean.getId() == child.getBean().getId()) {
+                return child;
+            }
+        }
+        return null;
+    }
+
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
 
-        if (tempFactor != 1f) {
-            int scroll = (int) (getTrackContainer().getScrollX() * (tempFactor - 1));
-            tempFactor = 1f;
-            getTrackContainer().setScrollX(getTrackContainer().getScrollX() + scroll);
-        }
-        int height = (int) timeLineHeight;
+
+        int height = 0;
         int padding = (itemTrackHeight - itemTrackViewHeight) / 2;
         int width = getMeasuredWidth();
         for (int i = 0; i < trackMedias.size(); i++) {
@@ -150,58 +270,139 @@ public class TrackView extends ViewGroup {
             int t = height + padding;
             for (int j = 0; j < data.size(); j++) {
                 TrackMediaBean mediaBean = data.get(j);
-                View child = mediaBean.getView();
-                int l = (int) (width * mediaBean.getAtTrackTime() / duration);
+                View child = findTrackItemView(mediaBean);
+                int l = (int) (width * mediaBean.getAtTrackTime() / getDuration());
                 child.layout(l, t, l + child.getMeasuredWidth(), t + itemTrackViewHeight);
+
             }
             height += itemTrackHeight;
         }
     }
 
-    @Override
-    protected void onDraw(Canvas canvas) {
-        super.onDraw(canvas);
 
-        drawTimeRuler(canvas);
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+
+        boolean intercept = dragHelper.shouldInterceptTouchEvent(ev);
+        switch (ev.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                Log.d(TAG, "onInterceptTouchEvent: ACTION_DOWN");
+                break;
+            case MotionEvent.ACTION_UP:
+                Log.d(TAG, "onInterceptTouchEvent: ACTION_UP");
+                break;
+
+        }
+        return intercept;
     }
 
-    private void drawTimeRuler(Canvas canvas) {
-        if (trackMedias.size() > 0) {
-            long unitCount = Math.round(getMeasuredWidth() / unitSize);//单元格数量
-            Log.d(TAG, "unitCount: " + unitCount);
-            for (int i = 0; i <= unitCount; i++) {
-                if (i % 2 == 0) {//绘制mm:ss
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        int x = (int) event.getRawX();
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                Log.d(TAG, "onTouchEvent: ACTION_DOWN");
+                break;
+            case MotionEvent.ACTION_MOVE:
+                int scrollX = getTrackContainer().getScrollX();
+                Log.d(TAG, "onTouchEvent: TrackContainer scrollX=" + scrollX);
+                if (dragHelper.getViewDragState() == ViewDragHelper.STATE_DRAGGING) {
+                    if (x < edgeTriggerSize && scrollX != 0) {//左屏幕的滚动
+                        if (LeftEdgeAnim == null || !LeftEdgeAnim.isRunning()) {
+                            int startScroll = scrollX;
+                            LeftEdgeAnim = ValueAnimator.ofFloat(1f, 0);
+                            LeftEdgeAnim.setDuration((long) (startScroll * animSpeed));
+                            int startLeft = dragHelper.getCapturedView().getLeft();
+                            LeftEdgeAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                                @Override
+                                public void onAnimationUpdate(ValueAnimator animation) {
+                                    float value = (float) animation.getAnimatedValue();
+                                    getTrackContainer().setScrollX((int) (startScroll * value));
+                                    Log.d(TAG, "onAnimationUpdate: " + value);
+                                    TrackItemView child = (TrackItemView) dragHelper.getCapturedView();
+                                    int moveScroll = (int) ((1 - value) * startScroll);
+                                    Log.d(TAG, "onAnimationUpdate moveScroll: " + moveScroll);
+                                    if (moveScroll > startLeft) {
+                                        moveScroll = startLeft;
+                                    }
 
-                    String time = "00:00";
-                    if (scaleFactor <= 2) {
-                        time = df.format(new Date(Math.round(unitUs * i / 1000)));
-                    } else {
-                        if (i % unitUs == 0) {//整秒
-                            time = df.format(new Date(i / unitUs * defaultUsPerUnit / 1000));
-                        } else {
-                            long mod = i % unitUs;
-                            if (unitUs == 4) {
-                                time = mod / 2 * 15 + "f";
-                            } else if (unitUs == 6) {
-                                time = mod / 2 * 10 + "f";
-                            } else if (unitUs == 12) {
-                                time = mod / 2 * 5 + "f";
-                            }
+                                    long startTime = getDuration() * (startLeft - moveScroll) / getMeasuredWidth();
+                                    Log.d(TAG, "child: onTouchEvent: " + child);
+                                    child.getBean().setAtTrackTime(startTime);
+                                    requestLayout();
+                                }
+                            });
+                            LeftEdgeAnim.setInterpolator(new LinearInterpolator());
+                            LeftEdgeAnim.start();
                         }
                     }
-                    timePaint.getTextBounds(time, 0, time.length(), timeBounds);
-                    float x = unitSize * i - timeBounds.width() / 2f;
-                    float y = (timeLineHeight + timeBounds.height()) / 2f;
-                    canvas.drawText(time, x, y, timePaint);
-                } else {//绘制.
-                    canvas.drawCircle(unitSize * i
-                            , timeLineHeight / 2f
-                            , dotSize / 2f
-                            , timePaint);
-                }
-            }
-        }
+                    if (ScreenUtils.getScreenWidth(getContext()) - x < edgeTriggerSize) {//右屏幕时滚动
 
+                        if (rightEdgeAnim == null || !rightEdgeAnim.isRunning()) {//应该不会超过1000s吧
+                            rightEdgeAnim = ValueAnimator.ofFloat(0, 1000000 * animSpeed);
+                            rightEdgeAnim.setDuration(1000000);
+                            int startLeft = dragHelper.getCapturedView().getLeft();
+                            long startDuration = getDuration();
+                            int startWidth = getMeasuredWidth();
+                            int startScroll = scrollX;
+                            rightEdgeAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                                @Override
+                                public void onAnimationUpdate(ValueAnimator animation) {
+                                    float value = (float) animation.getAnimatedValue();
+                                    Log.d(TAG, "onAnimationUpdate: " + value);
+                                    TrackItemView child = (TrackItemView) dragHelper.getCapturedView();
+                                    if (child != null) {
+                                        TrackMediaBean bean = child.getBean();
+                                        bean.setAtTrackTime((long) (startDuration * (startLeft + value) / startWidth));
+                                        computeTotalDuration();
+                                        requestLayout();
+                                        getTrackContainer().setScrollX((int) (startScroll + value));
+                                    }
+                                }
+                            });
+                            rightEdgeAnim.setInterpolator(new LinearInterpolator());
+                            rightEdgeAnim.start();
+                        }
+                    }
+                }
+                break;
+            case MotionEvent.ACTION_CANCEL:
+            case MotionEvent.ACTION_UP:
+                if (LeftEdgeAnim != null && LeftEdgeAnim.isRunning()) {
+                    LeftEdgeAnim.cancel();
+                }
+                if (rightEdgeAnim != null && rightEdgeAnim.isRunning()) {
+                    rightEdgeAnim.cancel();
+                }
+                Log.d(TAG, "onTouchEvent: ACTION_UP");
+                break;
+        }
+        dragHelper.processTouchEvent(event);
+        return true;
+    }
+
+    @Override
+    public void computeScroll() {
+        if (dragHelper.continueSettling(true)) {
+            invalidate();
+        } else if (isNeedRequestLayout) {
+            isNeedRequestLayout = false;
+            notifyDataChanged();
+        }
+    }
+
+    public ViewDragHelper getDragHelper() {
+        return dragHelper;
+    }
+
+    /**
+     * 捕获子view
+     *
+     * @param itemView
+     */
+    public void captureChild(TrackItemView itemView, int activePointerId) {
+        Log.d(TAG, "onViewCaptured:captureChild " + itemView);
+        dragHelper.captureChildView(itemView, activePointerId);
     }
 
 
@@ -211,27 +412,13 @@ public class TrackView extends ViewGroup {
      * @param bean
      */
     public void addTrack(TrackMediaBean bean) {
-        trackNum++;
-        //第一次添加为默认时长
-        if (trackMedias.size() == 0) {
-            duration = bean.getDuration();
-        }
-        //计算插入的时间点 开始
-        int width = (int) (duration * 1f / defaultUsPerUnit * maxUnitSize * scaleFactor);
-        if (width != 0) {
-            bean.setAtTrackTime(duration * getTrackContainer().getScrollX() / width);
-            if (bean.getAtTrackTime() + bean.getDuration() > duration) {
-                duration = bean.getAtTrackTime() + bean.getDuration();
-            }
-        }
-        Log.d(TAG, "setAtTrackTime: " + bean.getAtTrackTime());
-        //计算插入的时间点 结束
-
         //初始化一个轨道的view 开始
-         TrackItemView tv = new TrackItemView(getContext());
-//        tv.setText("track" + trackNum);
+        bean.setId(++trackId);
+        bean.setName("track" + bean.getId());
+        TrackItemView tv = new TrackItemView(getContext());
+        tv.setText(bean.getName());
+        tv.setBean(bean);
         addView(tv);
-        bean.setView(tv);
         //初始化一个item 结束
 
         //添加到原有的行轨道或者新行
@@ -240,17 +427,106 @@ public class TrackView extends ViewGroup {
             data.add(bean);
             trackMedias.add(data);
         }
+        recordToStack();
+    }
 
+    /**
+     * 返回上次操作
+     */
+    public void backOperate() {
+        if (recordMedias.size() > 1) {
+            recordMedias.pop();
+        }
+        trackMedias = copyTrackMedia(recordMedias.peek());
+        notifyDataChanged();
+
+    }
+
+    /**
+     * 数据改变时重新布局,stack 出栈的时候调用
+     */
+    private void notifyDataChanged() {
+        removeAllViews();
+        for (List<TrackMediaBean> data : trackMedias) {
+            for (TrackMediaBean bean : data) {
+                TrackItemView tv = new TrackItemView(getContext());
+                tv.setBean(bean);
+                addView(tv);
+            }
+        }
+        computeTotalDuration();
         requestLayout();
     }
+
+    /**
+     * 初始化轨道数据
+     */
+    private void initTrackMedias() {
+        int initRows = getMeasuredHeight() / itemTrackViewHeight;
+        for (int i = 0; i < initRows; i++) {
+            trackMedias.add(new ArrayList<>());
+        }
+        recordToStack();
+    }
+
+    /**
+     * 一个完整的操作完成后将数据压栈
+     */
+    private void recordToStack() {
+        recordMedias.push(copyTrackMedia(trackMedias));
+    }
+
+    /**
+     * 复制
+     *
+     * @param trackMedias
+     * @return
+     */
+    private List<List<TrackMediaBean>> copyTrackMedia(List<List<TrackMediaBean>> trackMedias) {
+        List<List<TrackMediaBean>> medias = new ArrayList<>();
+        try {
+            for (List<TrackMediaBean> data : trackMedias) {
+                List<TrackMediaBean> beans = new ArrayList<>();
+                for (TrackMediaBean bean : data) {
+                    beans.add(bean.clone());
+                }
+                medias.add(beans);
+            }
+        } catch (CloneNotSupportedException e) {
+            e.printStackTrace();
+        }
+        return medias;
+    }
+
+    /**
+     * 每一次拖动都要重新计算总时长
+     * 调整总时长
+     */
+    private void computeTotalDuration() {
+        long maxDuration = 0;
+        for (List<TrackMediaBean> data : trackMedias) {
+            if (data.size() > 0) {
+                TrackMediaBean bean = data.get(data.size() - 1);
+                long time = bean.getAtTrackTime() + bean.getDuration();//算出最后一个视频的时长，就是该行时长
+                if (time > maxDuration) maxDuration = time;
+            }
+        }
+        getTimeRuleContainer().setDuration(maxDuration);
+    }
+
 
     /**
      * 尝试添加到已有的轨道行
      */
     private boolean addExitTrack(TrackMediaBean bean) {
+
         long startTarget = bean.getAtTrackTime();
         long endTarget = bean.getAtTrackTime() + bean.getDuration();
         for (List<TrackMediaBean> data : trackMedias) {
+            if (data.size() == 0) {
+                data.add(bean);
+                return true;
+            }
             for (int i = 0; i < data.size(); i++) {
                 TrackMediaBean mediaBean = data.get(i);
                 long start = mediaBean.getAtTrackTime();
@@ -274,116 +550,21 @@ public class TrackView extends ViewGroup {
     }
 
     /**
-     * 设置缩放倍数
-     *
-     * @param scaleFactor
-     */
-    public void setScale(float scaleFactor) {
-        this.scaleFactor = scaleFactor;
-        pxPerUs *= scaleFactor;
-        if (scaleFactor != lastScaleFactor) {
-            tempFactor = scaleFactor / lastScaleFactor;
-            unitSize *= tempFactor;
-            measureUnitSize();
-            requestLayout();
-
-        }
-
-    }
-
-    private void measureUnitSize() {
-
-        if (lastScaleFactor <= 12 && lastScaleFactor > 6) {//1/12秒为单位
-            if (scaleFactor > 12) {
-                unitSize = minUnitSize * (scaleFactor / 12);
-            } else if (scaleFactor <= 6) {
-                unitSize = unitOneSixSecond * (scaleFactor / 6);
-                unitUs = 6;
-            }
-        } else if (lastScaleFactor <= 6 && lastScaleFactor > 3) {//1/6秒为单位
-            if (scaleFactor > 6) {
-                unitSize = minUnitSize * (scaleFactor / 6);
-                unitUs = 12;
-            } else if (scaleFactor <= 3) {
-                unitSize = unitQuartSecond * (scaleFactor / 3);
-                unitUs = 4;
-            }
-        } else if (lastScaleFactor <= 3 && lastScaleFactor > 2) {//1/4秒为单位
-            if (scaleFactor > 3) {
-                unitSize = minUnitSize * (scaleFactor / 3);
-                unitUs = 6;
-            } else if (scaleFactor <= 2) {
-                unitSize = unitHalfSecond * (scaleFactor / 2);
-                unitUs = defaultUsPerUnit / 2;
-            }
-        } else if (lastScaleFactor <= 2 && lastScaleFactor > 1) {//1/2秒为单位
-            if (scaleFactor > 2) {
-                unitSize = minUnitSize * (scaleFactor / 2);
-                unitUs = 4;
-            } else if (scaleFactor <= 1) {
-                unitSize = unitSecond * (scaleFactor / 1);
-                unitUs = defaultUsPerUnit;
-            }
-        } else if (lastScaleFactor <= 1 && lastScaleFactor > 1f / 2) {//1秒为单位
-            if (scaleFactor > 1) {
-                unitSize = minUnitSize * (scaleFactor / 1);
-                unitUs = defaultUsPerUnit / 2;
-            } else if (scaleFactor <= 1f / 2) {
-                unitSize = unitOneAndHalfSecond * (scaleFactor / (1f / 2));
-                unitUs = defaultUsPerUnit * 3 / 2;
-            }
-        } else if (lastScaleFactor <= 1f / 2 && lastScaleFactor > 1f / 3) {//1.5秒为单位
-            if (scaleFactor > 1f / 2) {
-                unitSize = minUnitSize * (scaleFactor / (1f / 2));
-                unitUs = defaultUsPerUnit;
-            } else if (scaleFactor <= 1f / 3) {
-                unitSize = unitTwoAndHalfSecond * (scaleFactor / (1f / 3));
-                unitUs = defaultUsPerUnit * 5 / 2;
-            }
-        } else if (lastScaleFactor <= 1f / 3 && lastScaleFactor > 1f / 5) {//2.5秒为单位
-            if (scaleFactor > 1f / 3) {
-                unitSize = minUnitSize * (scaleFactor / (1f / 3));
-                unitUs = defaultUsPerUnit * 3 / 2;
-            } else if (scaleFactor <= 1f / 5) {
-                unitSize = unitFiveSecond * (scaleFactor / (1f / 5));
-                unitUs = defaultUsPerUnit * 5;
-            }
-        } else if (lastScaleFactor <= 1f / 5 && lastScaleFactor > 1f / 10) {//5秒为单位
-            if (scaleFactor > 1f / 5) {
-                unitSize = minUnitSize * (scaleFactor / (1f / 5));
-                unitUs = defaultUsPerUnit * 5 / 2;
-            } else if (scaleFactor <= 1f / 10) {
-                unitSize = unitTenSecond * (scaleFactor / (1f / 10));
-                unitUs = defaultUsPerUnit * 10;
-            }
-        } else if (lastScaleFactor <= 1f / 10 && lastScaleFactor > 1f / 20) {//10秒为单位
-            if (scaleFactor > 1f / 10) {
-                unitSize = minUnitSize * (scaleFactor / (1f / 10));
-                ;
-                unitUs = defaultUsPerUnit * 5;
-            } else if (scaleFactor <= 1f / 20) {
-                unitSize = unitTwentySecond * (scaleFactor / (1f / 20));
-                ;
-                unitUs = defaultUsPerUnit * 20;
-            }
-        } else if (lastScaleFactor <= 1f / 20) {//20秒为单位
-            unitUs = defaultUsPerUnit * 20;
-            unitSize = unitTwentySecond;
-        }
-        Log.d(TAG, "scaleFactor: " + scaleFactor);
-        Log.d(TAG, "unitSize: " + unitSize);
-        Log.d(TAG, "unitUs: " + unitUs);
-        lastScaleFactor = scaleFactor;
-
-    }
-
-    /**
      * 获取父容器
      *
      * @return
      */
     private TrackContainer getTrackContainer() {
-        return (TrackContainer) getParent();
+        return (TrackContainer) getParent().getParent();
+    }
+
+    private TimeRuleContainer getTimeRuleContainer() {
+        return (TimeRuleContainer) getParent();
+    }
+
+    private long getDuration() {//视频总时长
+        long duration = getTimeRuleContainer().getDuration();
+        return duration;
     }
 
     private int dp2px(float dp) {
