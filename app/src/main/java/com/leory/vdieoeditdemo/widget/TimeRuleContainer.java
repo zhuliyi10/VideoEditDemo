@@ -6,8 +6,8 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.util.Log;
-import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.leory.vdieoeditdemo.bean.TrackMediaBean;
@@ -18,7 +18,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 /**
- * @Description: 时间刻度表容器,处理缩放系数
+ * @Description: 时间刻度表容器, 处理缩放系数
  * @Author: leory
  * @Time: 2020/11/10
  */
@@ -29,7 +29,6 @@ public class TimeRuleContainer extends ViewGroup {
     //时间刻度尺相关
     float timeLineHeight;//时间刻度尺高度
     Rect timeBounds = new Rect();
-    ;//mm:ss字体大小
     Paint timePaint = new Paint(Paint.ANTI_ALIAS_FLAG);//时间画笔
     float dotSize = 0f;
     float unitSize;//一个单元的宽度，定义为:.中心到mm:ss中心距离
@@ -50,13 +49,14 @@ public class TimeRuleContainer extends ViewGroup {
     float pxPerUs;
     float tempFactor = 1f;
     private long duration = 0L;//轨道总时长
-    private long videoDuration=0L;//视频总时长
+    private long videoDuration = 0L;//视频总时长
     private TrackMediaBean trackMediaBean;
     int videoTrackHeight;//视频轨道的高度
     int videoPaddingTop;//视频轨道默认paddingTop
 
     private TrackView trackView;
     private TextView trackVideo;
+    private ScrollView verticalScroll;
 
     private DateFormat df = new SimpleDateFormat("mm:ss");
 
@@ -100,11 +100,11 @@ public class TimeRuleContainer extends ViewGroup {
             int childHeightMeasureSpec = MeasureSpec.makeMeasureSpec(videoTrackHeight, MeasureSpec.EXACTLY);
             trackVideo.measure(childWidthMeasureSpec, childHeightMeasureSpec);
         }
-        if(trackView!=null){
+        if (verticalScroll != null) {
             int childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(totalWidth, MeasureSpec.EXACTLY);
-            int childHeight= (int) (height-timeLineHeight-videoPaddingTop-videoTrackHeight);
+            int childHeight = (int) (height - timeLineHeight - videoPaddingTop - videoTrackHeight);
             int childHeightMeasureSpec = MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY);
-            trackView.measure(childWidthMeasureSpec,childHeightMeasureSpec);
+            verticalScroll.measure(childWidthMeasureSpec, childHeightMeasureSpec);
         }
 
         setMeasuredDimension(totalWidth, height);
@@ -123,21 +123,26 @@ public class TimeRuleContainer extends ViewGroup {
 
         int height = (int) timeLineHeight;
         int width = getMeasuredWidth();
-        if(trackVideo!=null) {
+        if (trackVideo != null) {
             int l = (int) (width * trackMediaBean.getAtTrackTime() / duration);
             height += videoPaddingTop;
             trackVideo.layout(l, height, l + trackVideo.getMeasuredWidth(), height + videoTrackHeight);
         }
-        if(trackView!=null){
-            trackView.layout(0,getMeasuredHeight()-trackView.getMeasuredHeight(),trackView.getMeasuredWidth(),getMeasuredHeight());
+        if (verticalScroll != null) {
+            verticalScroll.layout(0, getMeasuredHeight() - verticalScroll.getMeasuredHeight(), verticalScroll.getMeasuredWidth(), getMeasuredHeight());
         }
 
     }
 
     @Override
+    protected void dispatchDraw(Canvas canvas) {
+        super.dispatchDraw(canvas);
+        drawTimeRuler(canvas);
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        drawTimeRuler(canvas);
     }
 
     private int dp2px(float dp) {
@@ -149,6 +154,9 @@ public class TimeRuleContainer extends ViewGroup {
     }
 
     private void drawTimeRuler(Canvas canvas) {
+        timePaint.setColor(Color.BLACK);
+        canvas.drawRect(0, 0, getMeasuredWidth(), timeLineHeight + videoPaddingTop, timePaint);
+        timePaint.setColor(Color.GRAY);
         if (duration > 0) {
             long unitCount = Math.round(getMeasuredWidth() / unitSize);//单元格数量
             Log.d(TAG, "unitCount: " + unitCount);
@@ -184,14 +192,14 @@ public class TimeRuleContainer extends ViewGroup {
                 }
             }
         }
-
     }
 
     /**
      * 获取轨道trackView
+     *
      * @return
      */
-    public TrackView getTrackView(){
+    public TrackView getTrackView() {
         return trackView;
     }
 
@@ -203,7 +211,7 @@ public class TimeRuleContainer extends ViewGroup {
     public void addTrack(TrackMediaBean bean) {
         if (duration == 0) {//第一个是视频
             duration = bean.getDuration();
-            videoDuration=duration;
+            videoDuration = duration;
             this.trackMediaBean = bean;
             trackVideo = new TextView(getContext());
             trackVideo.setText("视频轨道");
@@ -211,7 +219,11 @@ public class TimeRuleContainer extends ViewGroup {
             trackVideo.setBackgroundColor(Color.BLUE);
             addView(trackVideo);
             trackView = new TrackView(getContext());
-            addView(trackView);
+            verticalScroll = new ScrollView(getContext());
+            verticalScroll.setClipChildren(false);
+            verticalScroll.setClipToPadding(false);
+            verticalScroll.addView(trackView, makeLayoutParams());
+            addView(verticalScroll, 0, makeLayoutParams());
         } else {//添加音频数据
             //计算插入的时间点 开始
             int width = (int) (duration * 1f / defaultUsPerUnit * maxUnitSize * scaleFactor);
@@ -228,6 +240,10 @@ public class TimeRuleContainer extends ViewGroup {
         requestLayout();
     }
 
+    private LayoutParams makeLayoutParams() {
+        return new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+    }
+
     /**
      * 获取总时长
      *
@@ -239,13 +255,14 @@ public class TimeRuleContainer extends ViewGroup {
 
     /**
      * 设置时长
+     *
      * @param duration
      */
-    public void setDuration(long duration){
-        if(duration>videoDuration){//不能短于视频时长
-            this.duration=duration;
-        }else {
-            this.duration=videoDuration;
+    public void setDuration(long duration) {
+        if (duration > videoDuration) {//不能短于视频时长
+            this.duration = duration;
+        } else {
+            this.duration = videoDuration;
         }
 
     }

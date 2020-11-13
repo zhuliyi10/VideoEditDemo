@@ -2,6 +2,8 @@ package com.leory.vdieoeditdemo.bean;
 
 import androidx.annotation.NonNull;
 
+import com.leory.vdieoeditdemo.widget.TrackItemView;
+
 /**
  * @Description: 轨道bean
  * @Author: leory
@@ -13,7 +15,8 @@ public class TrackMediaBean implements Cloneable {
     private String name;//media name
     private long duration;//media时长
     private long atTrackTime;//在轨道的位置
-
+    private TrackItemView itemView;
+    private int row;//所在的行数
     public int getId() {
         return id;
     }
@@ -54,6 +57,22 @@ public class TrackMediaBean implements Cloneable {
         this.atTrackTime = atTrackTime;
     }
 
+
+    public TrackItemView getItemView() {
+        return itemView;
+    }
+
+    public void setItemView(TrackItemView itemView) {
+        this.itemView = itemView;
+    }
+
+    public int getRow() {
+        return row;
+    }
+
+    public void setRow(int row) {
+        this.row = row;
+    }
 
     @NonNull
     @Override
