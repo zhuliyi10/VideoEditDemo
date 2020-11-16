@@ -11,11 +11,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.VdieoEditDemo">
-        <activity android:name=".ViewDragHelperActivity">
-
-        </activity>
-        <activity android:name=".Test2Activity"></activity>
-        <activity android:name=".TestActivity"></activity>
+        <activity android:name=".VideoEditActivity"></activity>
+        <activity android:name=".ViewDragHelperActivity"></activity>
+        <activity android:name=".Test2Activity" />
+        <activity android:name=".TestActivity" />
         <activity android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

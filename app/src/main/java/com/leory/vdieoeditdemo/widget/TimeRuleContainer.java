@@ -26,6 +26,8 @@ public class TimeRuleContainer extends ViewGroup {
     private static final String TAG = TimeRuleContainer.class.getSimpleName();
     private float scaleFactor = 1f;//缩放倍数
     private float lastScaleFactor = 1f;//上一次倍数
+    private float startScaleFactor=1f;
+    private int startScrollX=0;
     //时间刻度尺相关
     float timeLineHeight;//时间刻度尺高度
     Rect timeBounds = new Rect();
@@ -47,7 +49,6 @@ public class TimeRuleContainer extends ViewGroup {
     long defaultUsPerUnit = 1000 * 1000;//默认一个单元多少us
     long unitUs = defaultUsPerUnit;//一个单元多少us
     float pxPerUs;
-    float tempFactor = 1f;
     private long duration = 0L;//轨道总时长
     private long videoDuration = 0L;//视频总时长
     private TrackMediaBean trackMediaBean;
@@ -56,7 +57,7 @@ public class TimeRuleContainer extends ViewGroup {
 
     private TrackView trackView;
     private TextView trackVideo;
-    private ScrollView verticalScroll;
+    private ScrollView verticalScroll;//用于轨道垂直滚动
 
     private DateFormat df = new SimpleDateFormat("mm:ss");
 
@@ -69,6 +70,7 @@ public class TimeRuleContainer extends ViewGroup {
         timePaint.setStrokeWidth(3f);
         timePaint.setColor(Color.GRAY);
         timePaint.setTextSize(sp2px(10f));
+        timePaint.setTextAlign(Paint.Align.CENTER);
         videoTrackHeight = dp2px(60);
         videoPaddingTop = dp2px(10);
         dotSize = dp2px(2f);
@@ -109,17 +111,10 @@ public class TimeRuleContainer extends ViewGroup {
 
         setMeasuredDimension(totalWidth, height);
 
-
     }
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-
-        if (tempFactor != 1f) {//为了调整缩放后当前时间不变
-            int scroll = (int) (getTrackContainer().getScrollX() * (tempFactor - 1));
-            tempFactor = 1f;
-            getTrackContainer().setScrollX(getTrackContainer().getScrollX() + scroll);
-        }
 
         int height = (int) timeLineHeight;
         int width = getMeasuredWidth();
@@ -145,54 +140,6 @@ public class TimeRuleContainer extends ViewGroup {
         super.onDraw(canvas);
     }
 
-    private int dp2px(float dp) {
-        return ScreenUtils.dp2px(getContext(), dp);
-    }
-
-    private float sp2px(float dp) {
-        return ScreenUtils.sp2px(getContext(), dp);
-    }
-
-    private void drawTimeRuler(Canvas canvas) {
-        timePaint.setColor(Color.BLACK);
-        canvas.drawRect(0, 0, getMeasuredWidth(), timeLineHeight + videoPaddingTop, timePaint);
-        timePaint.setColor(Color.GRAY);
-        if (duration > 0) {
-            long unitCount = Math.round(getMeasuredWidth() / unitSize);//单元格数量
-            Log.d(TAG, "unitCount: " + unitCount);
-            for (int i = 0; i <= unitCount; i++) {
-                if (i % 2 == 0) {//绘制mm:ss
-
-                    String time = "00:00";
-                    if (scaleFactor <= 2) {
-                        time = df.format(new Date(Math.round(unitUs * i / 1000)));
-                    } else {
-                        if (i % unitUs == 0) {//整秒
-                            time = df.format(new Date(i / unitUs * defaultUsPerUnit / 1000));
-                        } else {
-                            long mod = i % unitUs;
-                            if (unitUs == 4) {
-                                time = mod / 2 * 15 + "f";
-                            } else if (unitUs == 6) {
-                                time = mod / 2 * 10 + "f";
-                            } else if (unitUs == 12) {
-                                time = mod / 2 * 5 + "f";
-                            }
-                        }
-                    }
-                    timePaint.getTextBounds(time, 0, time.length(), timeBounds);
-                    float x = unitSize * i - timeBounds.width() / 2f;
-                    float y = (timeLineHeight + timeBounds.height()) / 2f;
-                    canvas.drawText(time, x, y, timePaint);
-                } else {//绘制.
-                    canvas.drawCircle(unitSize * i
-                            , timeLineHeight / 2f
-                            , dotSize / 2f
-                            , timePaint);
-                }
-            }
-        }
-    }
 
     /**
      * 获取轨道trackView
@@ -240,33 +187,6 @@ public class TimeRuleContainer extends ViewGroup {
         requestLayout();
     }
 
-    private LayoutParams makeLayoutParams() {
-        return new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
-    }
-
-    /**
-     * 获取总时长
-     *
-     * @return
-     */
-    public long getDuration() {
-        return duration;
-    }
-
-    /**
-     * 设置时长
-     *
-     * @param duration
-     */
-    public void setDuration(long duration) {
-        if (duration > videoDuration) {//不能短于视频时长
-            this.duration = duration;
-        } else {
-            this.duration = videoDuration;
-        }
-
-    }
-
     /**
      * 设置缩放倍数
      *
@@ -276,8 +196,10 @@ public class TimeRuleContainer extends ViewGroup {
         if (scaleFactor != lastScaleFactor) {
             this.scaleFactor = scaleFactor;
             pxPerUs *= scaleFactor;
-            tempFactor = scaleFactor / lastScaleFactor;
+            float tempFactor = scaleFactor / lastScaleFactor;
             unitSize *= tempFactor;
+            int newScrollX= Math.round (getTrackContainer().getScrollX()*tempFactor);
+            getTrackContainer().setScrollX(newScrollX);
             measureUnitSize();
             requestLayout();
 
@@ -285,6 +207,87 @@ public class TimeRuleContainer extends ViewGroup {
 
     }
 
+    /**
+     * 设置缩放起始倍数
+     */
+    public void setBeginScaleFactor(float scaleFactor){
+        this.startScaleFactor=scaleFactor;
+        startScrollX=getTrackContainer().getScrollX();
+    }
+
+    /**
+     * 获取总时长
+     *
+     * @return
+     */
+    protected long getDuration() {
+        return duration;
+    }
+
+    /**
+     * 设置时长
+     *
+     * @param duration
+     */
+    protected void setDuration(long duration) {
+        if (duration > videoDuration) {//不能短于视频时长
+            this.duration = duration;
+        } else {
+            this.duration = videoDuration;
+        }
+
+    }
+
+
+    /**
+     * 画时间刻度尺
+     *
+     * @param canvas
+     */
+    private void drawTimeRuler(Canvas canvas) {
+        timePaint.setColor(Color.BLACK);
+        canvas.drawRect(0, 0, getMeasuredWidth(), timeLineHeight + videoPaddingTop, timePaint);
+        timePaint.setColor(Color.GRAY);
+        if (duration > 0) {
+            long unitCount = Math.round(getMeasuredWidth() / unitSize);//单元格数量
+            Log.d(TAG, "unitCount: " + unitCount);
+            for (int i = 0; i <= unitCount; i++) {
+                if (i % 2 == 0) {//绘制mm:ss
+
+                    String time = "00:00";
+                    if (scaleFactor <= 2) {
+                        time = df.format(new Date(Math.round(unitUs * i / 1000)));
+                    } else {
+                        if (i % unitUs == 0) {//整秒
+                            time = df.format(new Date(i / unitUs * defaultUsPerUnit / 1000));
+                        } else {
+                            long mod = i % unitUs;
+                            if (unitUs == 4) {
+                                time = mod / 2 * 15 + "f";
+                            } else if (unitUs == 6) {
+                                time = mod / 2 * 10 + "f";
+                            } else if (unitUs == 12) {
+                                time = mod / 2 * 5 + "f";
+                            }
+                        }
+                    }
+                    timePaint.getTextBounds(time, 0, time.length(), timeBounds);
+                    float x = unitSize * i ;
+                    float y = (timeLineHeight + timeBounds.height()) / 2f;
+                    canvas.drawText(time, x, y, timePaint);
+                } else {//绘制.
+                    canvas.drawCircle(unitSize * i
+                            , timeLineHeight / 2f
+                            , dotSize / 2f
+                            , timePaint);
+                }
+            }
+        }
+    }
+
+    /**
+     * 计算1个单元格的像素数
+     */
     private void measureUnitSize() {
 
         if (lastScaleFactor <= 12 && lastScaleFactor > 6) {//1/12秒为单位
@@ -379,4 +382,18 @@ public class TimeRuleContainer extends ViewGroup {
     private TrackContainer getTrackContainer() {
         return (TrackContainer) getParent();
     }
+
+    private LayoutParams makeLayoutParams() {
+        return new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+    }
+
+    private int dp2px(float dp) {
+        return ScreenUtils.dp2px(getContext(), dp);
+    }
+
+    private float sp2px(float dp) {
+        return ScreenUtils.sp2px(getContext(), dp);
+    }
+
+
 }

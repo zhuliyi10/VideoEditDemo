@@ -14,6 +14,7 @@ import androidx.customview.widget.ViewDragHelper;
 
 import com.leory.vdieoeditdemo.bean.TrackMediaBean;
 import com.leory.vdieoeditdemo.utils.ScreenUtils;
+import com.leory.vdieoeditdemo.utils.VibrateUtils;
 
 /**
  * @Description: 轨道基本view
@@ -34,6 +35,7 @@ public class TrackItemView extends androidx.appcompat.widget.AppCompatTextView {
     private Paint bgPaint;//背景画笔
 
     private TrackMediaBean bean;
+
     public TrackItemView(Context context) {
         super(context);
         init(context);
@@ -59,6 +61,7 @@ public class TrackItemView extends androidx.appcompat.widget.AppCompatTextView {
             public void run() {
                 isLongPress = true;
                 setLongPressState(true);
+                VibrateUtils.shortVibrate(getContext());
                 getTrackView().cancelChildSelected();
             }
         };
@@ -150,16 +153,17 @@ public class TrackItemView extends androidx.appcompat.widget.AppCompatTextView {
     public void setClickSelected(boolean isSelected) {
         if (isSelected != isClickSelected) {
             this.isClickSelected = isSelected;
-            if(isClickSelected)bringToFront();
+            if (isClickSelected) bringToFront();
             invalidate();
         }
     }
 
     /**
      * 获取是否选中
+     *
      * @return
      */
-    public boolean getClickSelected(){
+    public boolean getClickSelected() {
         return isClickSelected;
     }
 

@@ -12,6 +12,7 @@ import android.view.View;
 import android.widget.HorizontalScrollView;
 
 import com.leory.vdieoeditdemo.bean.TrackMediaBean;
+import com.leory.vdieoeditdemo.listener.VideoTrackCallback;
 import com.leory.vdieoeditdemo.utils.ScreenUtils;
 
 /**
@@ -27,7 +28,7 @@ public class TrackContainer extends HorizontalScrollView {
     private float scaleFactor = 1f, lastScaleFactor = 1f;
     private ScaleGestureDetector scaleGestureDetector;//缩放监听器
     private TimeRuleContainer timeRuleContainer;
-    private boolean isDoublePointer = false;
+    private boolean isDoublePointer = false;//是否双指按下
     private long lastScaleTime = 0L;//上一次缩放的时间
 
     public TrackContainer(Context context) {
@@ -110,6 +111,7 @@ public class TrackContainer extends HorizontalScrollView {
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
         float left = getScrollX() + (getMeasuredWidth() - baseLineWidth) / 2;
+        //画中间线
         canvas.drawRect(
                 left,
                 0,
@@ -118,8 +120,6 @@ public class TrackContainer extends HorizontalScrollView {
                 baseLinePaint
 
         );
-//        Log.d(TAG, "getScrollX: " + getScrollX());
-//        Log.d(TAG, "getMeasuredWidth: " + getMeasuredWidth());
     }
 
     /**
@@ -142,6 +142,25 @@ public class TrackContainer extends HorizontalScrollView {
     }
 
     /**
+     * 操作回调更新页面
+     * @param callback
+     */
+    public void setVideoTrackCallback(VideoTrackCallback callback){
+        if(getTrackView()!=null){
+            getTrackView().setVideoTrackCallback(callback);
+        }
+    }
+
+    /**
+     * 分割轨道
+     */
+    public void segmentTrack(){
+        if(getTrackView()!=null){
+            getTrackView().segmentTrack();
+        }
+    }
+
+    /**
      * 获取时间刻度容器
      * @return
      */
@@ -153,13 +172,17 @@ public class TrackContainer extends HorizontalScrollView {
      * 获取轨道trackView
      * @return
      */
-    public TrackView getTrackView(){
+    private TrackView getTrackView(){
         if(timeRuleContainer!=null)return timeRuleContainer.getTrackView();
         return null;
     }
 
     private float dp2px(float dp) {
         return ScreenUtils.dp2px(getContext(), dp);
+    }
+
+    private void log(String log) {
+        Log.d(TAG, log);
     }
 
     private ScaleGestureDetector.OnScaleGestureListener scaleGestureListener = new ScaleGestureDetector.OnScaleGestureListener() {
@@ -192,7 +215,5 @@ public class TrackContainer extends HorizontalScrollView {
         }
     };
 
-    private void log(String log) {
-        Log.d(TAG, log);
-    }
+
 }

@@ -13,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.customview.widget.ViewDragHelper;
 
 import com.leory.vdieoeditdemo.bean.TrackMediaBean;
+import com.leory.vdieoeditdemo.listener.VideoTrackCallback;
 import com.leory.vdieoeditdemo.utils.ScreenUtils;
 
 import java.util.ArrayList;
@@ -23,7 +24,7 @@ import java.util.Set;
 import java.util.Stack;
 
 /**
- * @Description: 处理轨道视频的管理和拖动
+ * @Description: 处理轨道数据的管理和拖动
  * @Author: leory
  * @Time: 2020/11/4
  */
@@ -43,6 +44,8 @@ public class TrackView extends ViewGroup {
     private boolean isNeedRequestLayout = false;//是否需要重新requestLayout();
     private Stack<List<TrackMediaBean>> recordMedias = new Stack<>();
     int lastY;
+    int suckDistance;//自动吸住最小距离
+    VideoTrackCallback callback;
 
     public TrackView(Context context) {
         super(context);
@@ -65,6 +68,7 @@ public class TrackView extends ViewGroup {
         itemTrackHeight = dp2px(46);
         itemTrackViewHeight = dp2px(36);
         edgeTriggerSize = dp2px(15);
+        suckDistance = dp2px(4);
         animSpeed = 1;
         post(() -> initTrackMedias());
 
@@ -86,8 +90,30 @@ public class TrackView extends ViewGroup {
             }
 
             @Override
-            public int clampViewPositionHorizontal(View child, int left, int dx) {
+            public int clampViewPositionHorizontal(View view, int left, int dx) {
                 if (left < 0) return 0;
+//                int childLeft = left;
+//                int childRight=left+view.getMeasuredWidth();
+//                Log.d(TAG, "clampViewPositionHorizontal: dx "+dx);
+//                for (int i = 0; i < getChildCount(); i++) {
+//                    View child = getChildAt(i);
+//                    if (child == view) continue;
+//                    int l = child.getLeft();
+//                    int r = child.getRight();
+//                    if (Math.abs(l - childLeft) < suckDistance) {
+//                        left = l;
+//                    }
+//                    if (Math.abs(r - childLeft) < suckDistance) {
+//                        left = r;
+//                    }
+//                    if (Math.abs(l - childRight) < suckDistance) {
+//                        left = l - view.getMeasuredWidth();
+//                    }
+//                    if (Math.abs(r - childRight) < suckDistance) {
+//                        left = r - view.getMeasuredWidth();
+//                    }
+//
+//                }
                 return left;
             }
 
@@ -142,50 +168,6 @@ public class TrackView extends ViewGroup {
         });
     }
 
-    /**
-     * 获取所在的行数
-     *
-     * @return
-     */
-    private int getRow(int top) {
-        return (top + itemTrackViewHeight / 2) / itemTrackHeight;
-    }
-
-    /**
-     * 能否移到新的位置
-     *
-     * @return
-     */
-    private boolean isCanMove(TrackItemView child) {
-        int left = child.getLeft();
-        int row = getRow(child.getTop());
-        long leftTime = getDuration() * left / getMeasuredWidth();
-        long rightTime = leftTime + child.getBean().getDuration();
-        for (TrackMediaBean bean : trackMedias) {
-            if (child.getBean() == bean) continue;
-            long start = bean.getAtTrackTime();
-            long end = start + bean.getDuration();
-            if (!(leftTime > end || rightTime < start) && row == bean.getRow()) {//有交界
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 移动新的位置
-     */
-    private void moveToNewPosition(TrackItemView child) {
-        int left = child.getLeft();
-        int row = getRow(child.getTop());
-        long startTime = getDuration() * left / getMeasuredWidth();
-        child.getBean().setRow(row);
-        child.getBean().setAtTrackTime(startTime);
-        recordToStack();
-        computeTotalDuration();
-        requestLayout();
-
-    }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -198,7 +180,7 @@ public class TrackView extends ViewGroup {
             int childHeightMeasureSpec = MeasureSpec.makeMeasureSpec(itemTrackViewHeight, MeasureSpec.EXACTLY);
             child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
         }
-        setMeasuredDimension(width, getTotalRow()*itemTrackHeight);
+        setMeasuredDimension(width, getTotalRow() * itemTrackHeight);
     }
 
 
@@ -293,8 +275,7 @@ public class TrackView extends ViewGroup {
                             LeftEdgeAnim.setInterpolator(new LinearInterpolator());
                             LeftEdgeAnim.start();
                         }
-                    }
-                    else if (ScreenUtils.getScreenWidth(getContext()) - x < edgeTriggerSize) {//右屏幕时滚动
+                    } else if (ScreenUtils.getScreenWidth(getContext()) - x < edgeTriggerSize) {//右屏幕时滚动
 
                         if (rightEdgeAnim == null || !rightEdgeAnim.isRunning()) {//应该不会超过1000s吧
                             rightEdgeAnim = ValueAnimator.ofFloat(0, 1000000 * animSpeed);
@@ -337,38 +318,6 @@ public class TrackView extends ViewGroup {
         return true;
     }
 
-    /**
-     * 取消动画
-     */
-    private void cancelAnim() {
-        if (LeftEdgeAnim != null && LeftEdgeAnim.isRunning()) {
-            LeftEdgeAnim.cancel();
-        }
-        if (rightEdgeAnim != null && rightEdgeAnim.isRunning()) {
-            rightEdgeAnim.cancel();
-        }
-    }
-
-    /**
-     * 取消子view的选择
-     */
-    protected void cancelChildSelected() {
-        for (int i = 0; i < getChildCount(); i++) {
-            TrackItemView child = (TrackItemView) getChildAt(i);
-            child.setClickSelected(false);
-        }
-    }
-
-    /**
-     * 选中某个view
-     *
-     * @param target
-     */
-    protected void setChildSelected(TrackItemView target) {
-        for (TrackMediaBean mediaBean : trackMedias) {
-            mediaBean.getItemView().setClickSelected(target == mediaBean.getItemView());
-        }
-    }
 
     @Override
     public void computeScroll() {
@@ -380,21 +329,6 @@ public class TrackView extends ViewGroup {
         }
     }
 
-    public ViewDragHelper getDragHelper() {
-        return dragHelper;
-    }
-
-    /**
-     * 捕获子view
-     *
-     * @param itemView
-     */
-    public void captureChild(TrackItemView itemView, int activePointerId) {
-        Log.d(TAG, "onViewCaptured:captureChild " + itemView);
-        dragHelper.captureChildView(itemView, activePointerId);
-    }
-
-
     /**
      * 添加一个轨道
      *
@@ -405,7 +339,6 @@ public class TrackView extends ViewGroup {
         bean.setId(++trackId);
         bean.setName("track" + bean.getId());
         TrackItemView tv = new TrackItemView(getContext());
-        tv.setText(bean.getName());
         tv.setBean(bean);
         bean.setItemView(tv);
         //添加到原有的行轨道或者新行
@@ -428,6 +361,101 @@ public class TrackView extends ViewGroup {
         notifyDataChanged();
 
     }
+
+    /**
+     * 操作回调
+     *
+     * @param callback
+     */
+    public void setVideoTrackCallback(VideoTrackCallback callback) {
+        this.callback = callback;
+    }
+
+    /**
+     * 分割轨道
+     */
+    public void segmentTrack() {
+        TrackItemView selectedView = getSelectedChild();
+        if (selectedView != null) {
+            long currentTime = getDuration() * getTrackContainer().getScrollX() / getMeasuredWidth();
+            TrackMediaBean bean = selectedView.getBean();
+            long endTime = bean.getAtTrackTime() + bean.getDuration();
+            if (currentTime > bean.getAtTrackTime() && currentTime < endTime) {//可以切割
+                try {
+                    TrackMediaBean newBean = bean.clone();
+                    newBean.setId(++trackId);
+                    newBean.setDuration(currentTime - newBean.getAtTrackTime());
+                    TrackItemView tv = new TrackItemView(getContext());
+                    tv.setBean(newBean);
+                    newBean.setItemView(tv);
+                    trackMedias.add(newBean);
+                    addView(tv);
+                    bean.setAtTrackTime(currentTime);
+                    bean.setDuration(endTime - currentTime);
+                    requestLayout();
+                    recordToStack();
+                    selectedView.bringToFront();
+                } catch (CloneNotSupportedException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        }
+    }
+
+    /**
+     * 取消子view的选择
+     */
+    protected void cancelChildSelected() {
+        if (callback != null) {
+            callback.onAudioSelected(false);
+        }
+        for (int i = 0; i < getChildCount(); i++) {
+            TrackItemView child = (TrackItemView) getChildAt(i);
+            child.setClickSelected(false);
+        }
+    }
+
+    /**
+     * 选中某个view
+     *
+     * @param target
+     */
+    protected void setChildSelected(TrackItemView target) {
+        if (callback != null) {
+            callback.onAudioSelected(true);
+        }
+        for (TrackMediaBean mediaBean : trackMedias) {
+            mediaBean.getItemView().setClickSelected(target == mediaBean.getItemView());
+        }
+    }
+
+    /**
+     * 取消动画
+     */
+    private void cancelAnim() {
+        if (LeftEdgeAnim != null && LeftEdgeAnim.isRunning()) {
+            LeftEdgeAnim.cancel();
+        }
+        if (rightEdgeAnim != null && rightEdgeAnim.isRunning()) {
+            rightEdgeAnim.cancel();
+        }
+    }
+
+    protected ViewDragHelper getDragHelper() {
+        return dragHelper;
+    }
+
+    /**
+     * 捕获子view
+     *
+     * @param itemView
+     */
+    protected void captureChild(TrackItemView itemView, int activePointerId) {
+        Log.d(TAG, "onViewCaptured:captureChild " + itemView);
+        dragHelper.captureChildView(itemView, activePointerId);
+    }
+
 
     /**
      * 数据改变时重新布局,stack 出栈的时候调用
@@ -532,9 +560,66 @@ public class TrackView extends ViewGroup {
             }
         }
         if (maxRow < 4) return 4;
-        else return maxRow+1;
+        else return maxRow + 1;
     }
 
+    /**
+     * 获取所在的行数
+     *
+     * @return
+     */
+    private int getRow(int top) {
+        return (top + itemTrackViewHeight / 2) / itemTrackHeight;
+    }
+
+    /**
+     * 获取选中的view
+     */
+    private TrackItemView getSelectedChild() {
+        for (int i = 0; i < getChildCount(); i++) {
+            TrackItemView child = (TrackItemView) getChildAt(i);
+            if (child.getClickSelected()) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 能否移到新的位置
+     *
+     * @return
+     */
+    private boolean isCanMove(TrackItemView child) {
+        int left = child.getLeft();
+        int row = getRow(child.getTop());
+        long leftTime = getDuration() * left / getMeasuredWidth();
+        long rightTime = leftTime + child.getBean().getDuration();
+        for (TrackMediaBean bean : trackMedias) {
+            if (child.getBean() == bean) continue;
+            long start = bean.getAtTrackTime();
+            long end = start + bean.getDuration();
+            if (!(leftTime > end || rightTime < start) && row == bean.getRow()) {//有交界
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 移动新的位置
+     */
+    private void moveToNewPosition(TrackItemView child) {
+        int left = child.getLeft();
+        int row = getRow(child.getTop());
+        long startTime = getDuration() * left / getMeasuredWidth();
+        child.getBean().setRow(row);
+        child.getBean().setAtTrackTime(startTime);
+        recordToStack();
+        computeTotalDuration();
+        requestLayout();
+
+    }
 
     /**
      * 获取父容器
