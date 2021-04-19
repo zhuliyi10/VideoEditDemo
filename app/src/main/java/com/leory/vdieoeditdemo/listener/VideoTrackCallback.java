@@ -7,4 +7,5 @@ package com.leory.vdieoeditdemo.listener;
  */
 public interface VideoTrackCallback {
     void onAudioSelected(boolean isSelected);//音频的选中和取消
+    void onPlayTime(long currentMs,long durationMs);//实时更新
 }
