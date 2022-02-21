@@ -11,17 +11,22 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.VdieoEditDemo">
-        <activity android:name=".VideoEditActivity"></activity>
-        <activity android:name=".ViewDragHelperActivity"></activity>
-        <activity android:name=".Test2Activity" />
-        <activity android:name=".TestActivity" />
-        <activity android:name=".MainActivity">
+        <activity
+            android:name=".DragSortActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".VideoEditActivity" />
+        <activity android:name=".ViewDragHelperActivity">
+
+        </activity>
+        <activity android:name=".Test2Activity" />
+        <activity android:name=".TestActivity" />
+        <activity android:name=".HorizontalScrollTestActivity"></activity>
+        <activity android:name=".MainActivity"></activity>
     </application>
 
 </manifest>
